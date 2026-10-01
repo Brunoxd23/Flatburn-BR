@@ -1,59 +1,295 @@
-# Flatburn-firmware
+# Flatburn Firmware (Guia Completo em Português)
 
-> 🇧🇷 **Documentação em Português:** Consulte o [README.pt-BR.md](README.pt-BR.md) para o guia completo de arquitetura, compilação, gravação e comandos da CLI.
+O **Flatburn** é uma plataforma aberta de sensoriamento ambiental desenvolvida pelo [MIT Senseable City Lab](https://senseable.mit.edu). Projetada para ser instalada no teto de veículos (ônibus, viaturas, carros de lixo, etc.), ela funciona com energia solar e bateria recarregável, coletando métricas ambientais georreferenciadas enquanto o veículo trafega pela cidade.
 
-## Environment
-- Code developed using [Particle.io plugin for MS Code](https://www.particle.io/workbench/)
-- Devices can be flashed both via cable or cloud flash (data costs)
-- Compatible with [Particle deviceOS@6.3.4](https://docs.particle.io/reference/device-os/firmware)
-- Written in C++ and [Particle deviceOS APIs](https://docs.particle.io/reference/device-os/firmware/)
+Este guia documenta toda a arquitetura do firmware, instruções passo a passo de compilação/gravação e o manual de comandos do sistema.
 
-## Dev Environment Setup
+---
 
-1. Clone this repository
-2. Open Particle Workbench
-3. Run the `Particle: Import Project` command, follow the prompts, and wait for the project to load
-4. Run the `Particle: Configure Workspace for Device` command and select a compatible Device OS version and the `bsom` platform when prompted ([docs](https://docs.particle.io/tutorials/developer-tools/workbench/#cloud-build-and-flash))
-5. Connect your device
-6. Compile & Flash!
+## 📋 Sumário
+1. [Especificações Técnicas](#-especificações-técnicas)
+2. [Arquitetura do Firmware](#%EF%B8%8F-arquitetura-do-firmware)
+3. [Estrutura de Pastas e Módulos](#-estrutura-de-pastas-e-módulos)
+4. [Configuração do Ambiente e Ferramentas](#%EF%B8%8F-configuração-do-ambiente-e-ferramentas)
+5. [Comandos de Compilação e Gravação (Particle CLI)](#-comandos-de-compilação-e-gravação-particle-cli)
+6. [Manual de Comandos do Firmware (CLI Serial / Nuvem)](#-manual-de-comandos-do-firmware-cli-serial--nuvem)
+7. [Configurações Principais (cityscanner_config.h)](#-configurações-principais-cityscanner_configh)
+8. [Estrutura dos Payloads de Dados](#-estrutura-dos-payloads-de-dados)
+9. [Tratamento de Data, Hora e Fuso Horário](#-tratamento-de-data-hora-e-fuso-horário-brasília-utc-3)
+10. [Histórico de Alterações e Correções de Estabilidade](#%EF%B8%8F-histórico-de-alterações-e-correções-de-estabilidade)
 
-## Quick overview of classes and files
-- *cityscanner_config.h* main config file, needs to be updated before flashing
-- *main.h* the program startpoint, should not be modified
-- *cityscanner class* handles operation modes (more below)
-- *CitySense class* manages data acquisition for environmental sensors (air quality, etc)
-- *CityVitals class* acquires telemetry data (battery status, solar energy production, etc)
-- *CityStore class* manages storing data on the SD card, dumping data over USB
-- *MotionService class* used to send the device to sleep when the vehicle is not moving
-- *LocationService class* provides GPS data to other classes (e.g. CityStore)
+---
 
-## Operation modes
-- *IDLE* sensors off, provides only telemetry data
-- *REALTIME* logs data onto the SD card
-- *LOGGING* buffer data onto the SD card and send multiple records upon request (via USB)
-- *PWRSAVE* like LOGGING but in low power mode
+## ⚙️ Especificações Técnicas
 
-#### Payload
+- **Microcontrolador / Módulo IoT:** Particle B-Series SoM (`b5som` / `bsom`) com suporte a rede celular LTE.
+- **Versão do Sistema Operacional:** [Particle Device OS @ 6.3.4](https://docs.particle.io/reference/device-os/firmware/).
+- **Linguagem:** C++ (Particle Wiring API).
+- **Sensores Embarcados:**
+  - **Qualidade do Ar (Material Particulado):** Sensirion SPS30 (PM1.0, PM2.5, PM4, PM10).
+  - **Meteorologia:** BME280 (Temperatura, Umidade e Pressão).
+  - **Gases:** Sensor eletroquímico via conversor ADC de alta resolução (ADS1256).
+  - **Ruído Urbano:** Microfone analógico com amostragem contínua.
+  - **Geolocalização:** Módulo GPS com saída NMEA.
+  - **Movimento e Detecção de Inatividade:** Acelerômetro / IMU.
+  - **Telemetria de Bateria e Solar:** Medidores BQ24195 e LC709203F.
+  - **Armazenamento Local:** Módulo MicroSD (buffer redundante quando sem conexão).
 
-deviceID, timestamp, latitude, longitude, PM1.0, PM 2.5, PM4, PM10, numPM0.5, numPM1, numPM2.5, numPM4, numPM10, PM size, temperature, humidity, gas_op1_w, gas_op1_r, gas_op2_w, gas_op2_r, noise
+---
 
-### Vitals
-deviceID, time, latitude, longitude, SOC_batt, temp_batt, voltage_batt, voltage_particle, current_batt, isCharging, isCharginS, temp_int, hum_int, voltage_solar, current_solar, cell_strenght
+## 🏛️ Arquitetura do Firmware
 
-# Command line interface
-A Python script provides a command line interface (CLI) for retrieving data over USB. To use it, follow the step-by-step instructions in the [data retrieval guide](https://mit-senseable-city-lab.github.io/flatburn-lte/deploy/data)
+O firmware adota um padrão modular de classes Singleton, onde cada classe é responsável por um subsistema do dispositivo:
 
-## Date, Time & Timezone Handling (Brasília / UTC-3)
-- **Unix Epoch Timestamp:** GPS date is parsed using `CalendarYrToTm(year)` (years since 1970) producing standard Unix Epoch seconds in the CSV `timestamp` column.
-- **GPS-to-RTC Sync:** When GPS achieves valid date and time fix (`year >= 2020`), the hardware RTC is synced via `Time.setTime(epoch)` to maintain accurate clock even during temporary satellite loss (e.g. tunnels/urban canyons).
-- **Timezone Support:** Configured via `#define TIMEZONE_OFFSET -3` in `cityscanner_config.h` and applied with `Time.zone(-3)`. File names in `/queue/` (`MMDDHHMM.csv`) and formatted outputs reflect local Brasília time.
-- **Double Precision Coordinates:** GPS latitude and longitude use 64-bit `double` for sub-meter positioning accuracy.
+| Módulo / Classe | Arquivos | Responsabilidade |
+| :--- | :--- | :--- |
+| **Cityscanner** | `cityscanner.h / .cpp` | Gerenciador central. Controla o loop principal e máquina de estados (`IDLE`, `REALTIME`, `LOGGING`, `PWRSAVE`). |
+| **CitySense** | `cityscanner_sense.h / .cpp` | Inicialização, amostragem e conversão de dados de todos os sensores ambientais (SPS30, BME280, ADS1256, Ruído). |
+| **CityVitals** | `cityscanner_vitals.h / .cpp` | Aquisição de dados de diagnóstico elétrico: nível de bateria (SOC), tensão, corrente, temperatura e produção de energia dos painéis solares. |
+| **CityStore** | `cityscanner_store.h / .cpp` | Manipulação do cartão MicroSD: gravação em buffer CSV, rotação de arquivos e descarga de dados via USB. |
+| **LocationService** | `location_service.h / .cpp` | Leitura e parsing de mensagens NMEA do GPS (latitude, longitude, velocidade, altitude e horário Epoch). |
+| **MotionService** | `motion_service.h / .cpp` | Monitora o acelerômetro. Se o veículo ficar parado por mais de `INACTIVITY_TIME`, ativa rotinas de economia de energia. |
+| **CitySleep** | `cityscanner_sleep.h / .cpp` | Controle de modos de suspensão (`Stop`, `Hibernate`, `Light Sleep`) para evitar descarregar a bateria durante a noite ou estacionado. |
+| **CS_core** | Em `cscore` (lib) | Controle dos reguladores de tensão (chaveamento dos barramentos 3.3V e 5V dos sensores). |
+| **CLI Handler** | `cityscanner_cli.h` | Interpretador de comandos que recebe instruções via porta Serial (USB) ou pela função de nuvem da Particle. |
 
-## Recent Stability & Firmware Fixes
-- **Baud Rate:** Serial baud rate updated to `115200` baud in `main.cpp` to match Web Downloader (`flatburn_downloader.html`).
-- **ADS1256 Timeout:** Added a 100ms timeout in `waitForLowDRDY()` / `waitForHighDRDY()` inside `ADS1256.cpp` driver to prevent infinite hardware lockups when gas sensor DRDY line stays HIGH.
-- **Power Rail Sequencing:** 3.3V and 5V power rails are now enabled at the very start of `Cityscanner::init()` before probing I2C (battery charger) and SPI (SD card), resolving SD mount failures and boot stalls.
-- **Library Example Isolation:** Library `.ino` files in `lib/` renamed to `.ino.bak` so `particle compile` only builds the core application (`main.cpp`).
-- **Offline Logging:** Added `Cellular.off()` in `STARTUP()` to prevent cellular modem LED green blinking when running offline SD logging.
+---
 
+## 📁 Estrutura de Pastas e Módulos
 
+```text
+firmware/
+├── project.properties         # Configuração básica do projeto Particle
+├── README.md                  # Documentação completa em português (e inglês)
+├── README.pt-BR.md            # Cópia direta do guia em português
+├── src/
+│   ├── main.cpp               # Ponto de entrada (setup e loop) e Watchdog
+│   ├── cityscanner_config.h   # Arquivo mestre de configurações e tempos
+│   ├── cityscanner_cli.h      # Interpretador de comandos via Serial e Cloud
+│   ├── cityscanner.h / .cpp   # Classe mestra do CityScanner
+│   ├── cityscanner_sense.*    # Leitura de sensores ambientais
+│   ├── cityscanner_vitals.*   # Telemetria elétrica (bateria e solar)
+│   ├── cityscanner_store.*    # Armazenamento em cartão SD
+│   ├── cityscanner_sleep.*    # Gerenciamento de baixo consumo de energia
+│   ├── cityscanner_cellular.* # Conexão celular
+│   ├── location_service.*     # GPS e data/hora
+│   └── motion_service.*       # IMU e detecção de movimento
+└── lib/                       # Bibliotecas dos sensores e periféricos
+    ├── ADS1256-main/          # Driver do conversor ADC para gás
+    ├── sps30-master/          # Driver do sensor de material particulado
+    ├── gps/                   # Driver de comunicação com o GPS
+    ├── sdcard/                # Driver de comunicação SPI com cartão SD
+    ├── battery/               # Medidor de combustível de bateria
+    ├── batterycharger/        # Controlador de carga solar/bateria
+    └── ...
+```
+
+---
+
+## 🛠️ Configuração do Ambiente e Ferramentas
+
+Para trabalhar com este firmware, você só precisa do **Node.js** e do **Particle CLI** instalados no computador.
+
+### 1. Instalar o Particle CLI (Global)
+No terminal do seu computador (PowerShell ou Prompt de Comando):
+```bash
+npm install -g particle-cli
+```
+
+### 2. Verificar a Instalação
+```bash
+particle --version
+# Exemplo de saída: 3.51.0
+```
+
+### 3. Fazer Login na Conta Particle
+Para utilizar o compilador na nuvem e os recursos remotos:
+```bash
+particle login
+```
+*Insira seu e-mail e senha cadastrados no console da [Particle.io](https://login.particle.io).*
+
+---
+
+## 🚀 Comandos de Compilação e Gravação (Particle CLI)
+
+Todos os comandos abaixo devem ser executados a partir da raiz do repositório (`flartBurn/`):
+
+### 1. Compilar o Firmware
+Para compilar o código fonte da pasta `firmware` direcionado à plataforma `b5som` (ou `bsom`) com o Device OS `6.3.4`:
+```bash
+particle compile b5som firmware/ --target 6.3.4 --saveTo firmware.bin
+```
+- Se a compilação tiver sucesso, será gerado o arquivo `firmware.bin`.
+
+### 2. Gravar no Dispositivo via USB (Cabo)
+1. Conecte a placa ao computador pelo cabo USB.
+2. Coloque a placa em **modo DFU** (se não for acionado automaticamente):
+   - Mantenha pressionados os botões **RESET** e **MODE**.
+   - Solte o botão **RESET** e continue segurando o botão **MODE** até o LED RGB começar a **piscar em amarelo / âmbar**.
+3. Execute o comando de gravação:
+   ```bash
+   particle flash --usb firmware.bin
+   ```
+
+### 3. Gravar no Dispositivo via Nuvem (OTA - Sem cabo)
+Caso o dispositivo esteja na rua ou conectado via celular:
+```bash
+particle flash NOME_OU_ID_DO_DISPOSITIVO firmware.bin
+```
+
+### 4. Visualizar Logs da Porta Serial (Monitor em Tempo Real)
+Para acompanhar leituras de sensores e mensagens de debug enviadas pelo dispositivo via USB:
+```bash
+particle serial monitor --follow
+```
+
+### 5. Listar Dispositivos Conectados na USB
+```bash
+particle serial list
+```
+
+---
+
+## 🎮 Manual de Comandos do Firmware (CLI Serial / Nuvem)
+
+O firmware possui um interpretador de comandos integrado (`cityscanner_cli.h`).  
+Os comandos podem ser enviados de duas formas:
+1. **Pela porta Serial USB:** digitando diretamente no monitor serial ou enviando via scripts em Python.
+2. **Pela Nuvem da Particle:** chamando a função `CLI` da placa pelo terminal:
+   ```bash
+   particle call NOME_DO_DISPOSITIVO CLI "COMANDO"
+   ```
+
+Abaixo está a lista completa de comandos suportados:
+
+### A. Download e Gerenciamento do Cartão SD
+| Comando | Descrição |
+| :--- | :--- |
+| `LIST` | Lista todos os arquivos `.csv` armazenados no cartão MicroSD. |
+| `READ:<nome_arquivo>` | Imprime na Serial todo o conteúdo do arquivo especificado (ex: `READ:0001.csv`). |
+| `DELETE_ALL` | Remove do cartão SD os arquivos que já foram baixados. |
+| `sd,dump,all` | Despeja todos os arquivos de dados na porta Serial. |
+| `sd,dump,<N>` | Despeja os últimos `<N>` arquivos de dados (ex: `sd,dump,5`). |
+| `sd,files` | Retorna a quantidade de arquivos de dados pendentes no cartão SD. |
+| `sd,health` | Retorna o status de saúde e conectividade do cartão SD. |
+| `sd,reinit` | Reinicializa o driver do cartão SD caso ocorra alguma falha. |
+| `sd,format` | Formata e reinicia a estrutura de pastas do cartão SD. |
+
+### B. Leituras Imediatas e Sensores
+| Comando | Descrição |
+| :--- | :--- |
+| `last,payload` | Retorna a última leitura completa dos sensores (GPS + Poluentes + Clima). |
+| `last,vitals` | Retorna a última leitura de telemetria elétrica (Bateria + Solar). |
+| `device-check` | Executa um teste em todos os sensores e retorna a linha consolidada. |
+| `location` | Retorna as coordenadas GPS atuais (`latitude,longitude`). |
+| `battery` | Retorna status detalhado da bateria (SOC %, tensão, corrente de carga). |
+| `solar` ou `input` | Retorna a tensão e corrente produzidas pelos painéis solares. |
+| `opc` | Retorna os dados brutos da última leitura do sensor de material particulado SPS30. |
+
+### C. Controle de Energia dos Sensores (Chaveamento de Barramentos)
+| Comando | Descrição |
+| :--- | :--- |
+| `3v3on` | Liga a alimentação de 3.3V e inicializa GPS, temperatura, ruído e gás. |
+| `3v3off` | Desliga todos os sensores de 3.3V para economizar energia. |
+| `5von` | Liga a linha de 5V (alimentação necessária para o sensor SPS30). |
+| `5voff` | Desliga a linha de 5V e desativa o sensor SPS30. |
+| `opcon` | Liga o sensor de partículas SPS30. |
+| `opcoff` | Desliga o sensor de partículas SPS30. |
+| `autosleep,on` | Habilita o modo de suspensão automática quando o veículo estaciona. |
+| `autosleep,off` | Força o dispositivo a ficar acordado mesmo se estiver parado. |
+
+### D. Controle do Sistema e Modos de Espera
+| Comando | Descrição |
+| :--- | :--- |
+| `reboot` | Reinicia o microcontrolador imediatamente (`System.reset()`). |
+| `dfu` | Coloca a placa em modo DFU remotamente para receber novo firmware. |
+| `stop` | Coloca a placa em modo de espera profundo (Stop Sleep) por até 12 horas ou até movimento. |
+| `hibernate,<tempo>,<unidade>` | Coloca a placa em hibernação profunda por um tempo pré-determinado.<br>Exemplo: `hibernate,30,minutes` ou `hibernate,2,hours`. |
+
+---
+
+## ⚙️ Configurações Principais (`cityscanner_config.h`)
+
+Para alterar a frequência de coleta, modos de operação ou limites de segurança de bateria, edite o arquivo [firmware/src/cityscanner_config.h](src/cityscanner_config.h):
+
+| Parâmetro | Padrão | O que configura |
+| :--- | :--- | :--- |
+| `MODE` | `LOGGING` | Modo padrão de operação (`REALTIME`, `LOGGING` ou `PWRSAVE`). |
+| `SAMPLE_RATE` | `5` | Intervalo em segundos entre amostragens de sensores de qualidade do ar. |
+| `VITALS_RATE` | `300` | Intervalo em segundos (5 minutos) entre leituras de telemetria da bateria/solar. |
+| `INACTIVITY_TIME`| `120` | Segundos sem movimento do veículo para ativar o modo de economia. |
+| `AUTOSLEEP` | `TRUE` | Ativa/desativa se a placa dorme automaticamente quando estacionada. |
+| `LOW_BATTERY_THRESHOLD` | `3.70` | Tensão em Volts da bateria para acionar o alerta de bateria baixa. |
+| `RECORDS_PER_FILE` | `200` | Quantidade de registros por arquivo `.csv` no cartão SD antes de rotacionar. |
+| `CELLULAR_ON_STARTUP` | `FALSE` | Define se a conexão celular é ligada imediatamente ao dar boot. |
+| `TIMEZONE_OFFSET` | `-3` | Fuso horário em horas (padrão `-3` para Horário de Brasília / São Paulo). |
+
+---
+
+## 📊 Estrutura dos Payloads de Dados
+
+Os dados gravados no cartão SD e transmitidos via nuvem/USB seguem o padrão CSV delimitado por vírgulas:
+
+### 1. Payload de Sensores (Ambiental)
+```text
+deviceID, timestamp, latitude, longitude, PM1.0, PM2.5, PM4, PM10, numPM0.5, numPM1, numPM2.5, numPM4, numPM10, PM_size, temperature, humidity, gas_op1_w, gas_op1_r, gas_op2_w, gas_op2_r, noise
+```
+
+### 2. Payload de Vitals (Diagnóstico Elétrico)
+```text
+deviceID, time, latitude, longitude, SOC_batt, temp_batt, voltage_batt, voltage_particle, current_batt, isCharging, isCharginS, temp_int, hum_int, voltage_solar, current_solar, cell_strength
+```
+
+---
+
+## 🕒 Tratamento de Data, Hora e Fuso Horário (Brasília UTC-3)
+
+Para garantir precisão nas análises em **São Paulo / Brasil**, o firmware conta com as seguintes regras de sincronização temporal e georreferenciamento:
+
+### 1. Correção do Timestamp Epoch
+- O cálculo da data do GPS utiliza `CalendarYrToTm(tinyGps->date.year())`, convertendo o ano civil de 4 dígitos (ex.: 2024, 2026) diretamente em anos transcorridos desde 1970.
+- Isso gera um **Unix Epoch UTC padronizado em segundos** na coluna `timestamp` do CSV, pronto para ser lido pelo downloader web ou bibliotecas de análise (ex.: Pandas).
+
+### 2. Sincronização Automática do Relógio Interno (RTC)
+- Assim que o módulo GPS obtém uma data e hora válidas dos satélites (`tinyGps->date.isValid()` e ano >= 2020), o firmware executa:
+  ```cpp
+  Time.setTime(epoch);
+  ```
+- **Vantagem:** Mesmo quando o veículo passa por viadutos, túneis ou locais com perda momentânea de sinal de satélite, o microcontrolador mantém a data e hora contínuas e corretas no relógio de hardware da placa.
+
+### 3. Fuso Horário de Brasília (`TIMEZONE_OFFSET -3`)
+- O GPS transmite as horas nativamente em **UTC (Greenwich)**, o que deixa o horário 3 horas adiantado em relação a Brasília.
+- O parâmetro `#define TIMEZONE_OFFSET -3` no [cityscanner_config.h](src/cityscanner_config.h) ativa a compensação local via `Time.zone(-3)`:
+  - **Nomes de Arquivos no SD:** Os arquivos na pasta `queue/` são salvos com o formato `MMDDHHMM.csv` (Mês, Dia, Hora, Minuto) no **horário local de Brasília**.
+  - **Formatação de Texto (`getGPStime()`):** Retorna `DD/MM/AAAA HH:MM:SS` já ajustado para o horário de Brasília.
+  - **Downloader Web:** Ao carregar o arquivo no `flatburn_downloader.html`, os registros são convertidos automaticamente para o horário de Brasília.
+
+### 4. Alta Precisão de Latitude e Longitude
+- As variáveis de coordenadas utilizam tipo `double` (64 bits) em vez de `float` (32 bits), preservando 6 casas decimais (resolução submétrica) sem distorções no mapeamento das ruas.
+
+---
+
+## 🛠️ Histórico de Alterações e Correções de Estabilidade
+
+1. **Taxa de Transmissão Serial Atualizada para 115200 Baud:**
+   - A inicialização da porta Serial em [main.cpp](src/main.cpp) foi ajustada de `9600` para `115200` baud. Isso sincronizou a velocidade do microcontrolador com a interface web ([flatburn_downloader.html](../documentation/content/explore/flatburn_downloader.html)), permitindo o download ultrarrápido dos arquivos do cartão SD via porta USB sem perda ou corrupção de caracteres.
+
+2. **Timeout de Proteção no Conversor ADC ADS1256:**
+   - Adicionada verificação com timeout de 100ms nas funções `waitForLowDRDY()` e `waitForHighDRDY()` no driver do sensor de gás ADS1256 ([ADS1256.cpp](lib/ADS1256-main/src/ADS1256.cpp)).
+   - **Efeito:** Evita que a placa congele em um `while(digitalRead(DRDY) == HIGH)` infinito quando o sensor de gás estiver ausente, desligado ou com o pino DRDY em nível alto. O sistema agora ignora a falha pontual e continua a amostragem dos demais sensores sem travar a placa.
+
+3. **Correção na Ordem de Energização das Linhas 3.3V e 5V:**
+   - Em [cityscanner.cpp](src/cityscanner.cpp), a inicialização dos barramentos de alimentação (`core.enable3V3(true)` e `core.enable5V(true)`) foi movida para o **início da função `init()`**, logo após o `core.begin()`.
+   - **Efeito:** Garante que o barramento I2C (carregador de bateria) e a SPI do Cartão MicroSD estejam devidamente energizados em 3.3V antes da primeira tentativa de comunicação, eliminando falhas de montagem do SD e bloqueios no boot.
+
+4. **Desativação de Sketches de Exemplo nas Bibliotecas (`.ino.bak`):**
+   - Todos os arquivos `.ino` situados dentro da pasta `lib/` (ex.: `ADS1256-Example.ino`) foram renomeados para `.ino.bak`.
+   - **Efeito:** Impede que o utilitário de compilação da Particle (`particle compile`) inclua sketches de teste de bibliotecas no binário final. O binário compilado agora contém 100% do código do projeto principal `Cityscanner` (~80 KB).
+
+5. **Exibição do Modo `LOGGING` em Tempo Real na Serial:**
+   - Ativada a chamada da função `printDebug()` no bloco `case LOGGING:` dentro do `loop()`, imprimindo a tabela consolidada de todos os sensores (GPS, Temperatura, Umidade, Gás, Ruído, Bateria, Painel Solar) diretamente no monitor serial a cada 5 segundos.
+
+6. **Desativação Total do Modem Celular no Boot:**
+   - Incluído o comando `Cellular.off()` no bloco `STARTUP()` de [main.cpp](src/main.cpp).
+   - **Efeito:** Impede que o LED RGB fique piscando em verde procurando torres de celular quando o dispositivo estiver operando exclusivamente em modo de registro offline no cartão SD.
