@@ -122,7 +122,7 @@ void ADS1256::InitializeADC()
 
 void ADS1256::waitForLowDRDY()
 {		
-	unsigned long timeout = millis() + 100;
+	unsigned long timeout = millis() + 500;
 	while (digitalRead(_DRDY_pin) == HIGH) {
 		if (millis() > timeout) break;
 	}	
@@ -533,7 +533,7 @@ void ADS1256::writeRegister(uint8_t registerAddress, uint8_t registerValueToWrit
   
   setCS(HIGH);
   _spi->endTransaction();
-  delay(100);
+  delay(10);
   
 }
 
@@ -550,13 +550,13 @@ long ADS1256::readRegister(uint8_t registerAddress) //Reading a register
 
   _spi->transfer(0x00); //2nd (empty) command byte
 
-  delayMicroseconds(5); //see t6 in the datasheet
+  delayMicroseconds(10); //t6 in datasheet (>= 50*t_CLKIN = 6.51 us)
 
   uint8_t regValue = _spi->transfer(0xFF); //read out the register value
 
   setCS(HIGH);
   _spi->endTransaction();
-  delay(100);
+  delay(5);
   return regValue;
 }
 
@@ -567,7 +567,7 @@ long ADS1256::readSingle() //Reading a single value ONCE using the RDATA command
 	setCS(LOW); //REF: P34: "CS must stay low during the entire command sequence"  
 	waitForLowDRDY();
 	_spi->transfer(0b00000001); //Issue RDATA (0000 0001) command
-	delayMicroseconds(7); //Wait t6 time (~6.51 us) REF: P34, FIG:30.
+	delayMicroseconds(10); //Wait t6 time (>= 6.51 us) REF: P34, FIG:30.
 
 	_outputBuffer[0] = _spi->transfer(0); // MSB
 	_outputBuffer[1] = _spi->transfer(0); // Mid-byte
@@ -581,6 +581,45 @@ long ADS1256::readSingle() //Reading a single value ONCE using the RDATA command
 	_spi->endTransaction();
   
 	return(_outputValue);
+}
+
+long ADS1256::readChannel(uint8_t mux) //Switch MUX, sync, wait, and read single conversion
+{
+	_spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
+	setCS(LOW);
+	
+	waitForLowDRDY();
+	
+	// Step 1: Write MUX register
+	_spi->transfer(0x50 | MUX_REG); // WREG MUX
+	_spi->transfer(0x00);           // 1 byte
+	_spi->transfer(mux);            // New channel
+	delayMicroseconds(5);
+	
+	// Step 2: Restart conversion on new channel
+	_spi->transfer(0b11111100);     // SYNC (0xFC)
+	delayMicroseconds(5);
+	_spi->transfer(0b11111111);     // WAKEUP (0xFF)
+	delayMicroseconds(10);
+	
+	// Step 3: Wait until conversion for the new channel completes
+	waitForLowDRDY();
+	
+	// Step 4: Issue RDATA command
+	_spi->transfer(0b00000001);     // RDATA (0x01)
+	delayMicroseconds(10);          // t6 delay (>= 6.51 us)
+	
+	_outputBuffer[0] = _spi->transfer(0); // MSB
+	_outputBuffer[1] = _spi->transfer(0); // Mid-byte
+	_outputBuffer[2] = _spi->transfer(0); // LSB
+	
+	_outputValue = ((long)_outputBuffer[0]<<16) | ((long)_outputBuffer[1]<<8) | (_outputBuffer[2]);
+	_outputValue = convertSigned24BitToLong(_outputValue);
+	
+	setCS(HIGH);
+	_spi->endTransaction();
+	
+	return _outputValue;
 }
 
 long ADS1256::readSingleContinuous() //Reads the recently selected input channel using RDATAC

@@ -133,6 +133,7 @@ public:
 
 	//Get a single conversion
 	long readSingle();
+	long readChannel(uint8_t mux); // Switch MUX, sync, wait, and read single conversion
 	
 	//Single input continuous reading
 	long readSingleContinuous();

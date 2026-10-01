@@ -295,35 +295,31 @@ bool CitySense::startGAS() {
   Serial.print("ADS1256: DRDY pin state before init: ");
   Serial.println(digitalRead(ADS1256_DRDY_PIN) ? "HIGH" : "LOW");
 
-  // Initialize using library (handles CS, SPI setup, reset, calibration)
+  // Initialize using library (handles SPI setup, calibration)
   ads.InitializeADC();
   delay(100);
 
-  // Read status register to check if device is responding
-  long status = ads.readRegister(STATUS_REG);
-  Serial.printlnf("ADS1256 Status: 0x%02lX", status);
-
-  // Check if we got a valid response (0xFF means no device)
-  if (status == 0xFF || status == -1) {
-    Serial.println("ADS1256: No response (check wiring/power)");
-    Serial.println("  - DRDY pin: D16");
-    Serial.println("  - CS pin: Hardwired GND");
-    Serial.println("  - SPI1: SCK=D2, MOSI=D3, MISO=D4");
-    Serial.print("ADS1256: DRDY pin state now: ");
-    Serial.println(digitalRead(ADS1256_DRDY_PIN) ? "HIGH" : "LOW");
-    GAS_started = false;
-    return false;
-  }
-
   // Configure for gas sensor reading
-  ads.setPGA(PGA_1);         // PGA = 1 (+/- 5V range)
-  ads.setDRATE(DRATE_10SPS); // 10 samples per second
-  ads.setBuffer(
-      BUFFER_ENABLED); // Enable input buffer for high impedance sensors
+  ads.setPGA(PGA_1);          // PGA = 1 (+/- 5V range)
+  ads.setDRATE(DRATE_100SPS); // 100 samples per second (40ms settling time)
+  ads.setBuffer(BUFFER_ENABLED); // Enable input buffer
 
-  // Read back settings
-  Serial.printlnf("ADS1256 PGA: %d", ads.getPGA());
-  Serial.printlnf("ADS1256 DRATE: 0x%02lX", ads.readRegister(DRATE_REG));
+  // Read back status and settings
+  long status = ads.readRegister(STATUS_REG);
+  uint8_t pga = ads.getPGA();
+  long drate = ads.readRegister(DRATE_REG);
+  
+  Serial.printlnf("ADS1256 Status: 0x%02lX", status);
+  Serial.printlnf("ADS1256 PGA: %d", pga);
+  Serial.printlnf("ADS1256 DRATE: 0x%02lX", drate);
+
+  // Quick initial test read of all 4 channels
+  uint8_t mux_vals[] = {SING_0, SING_1, SING_2, SING_3};
+  for (int i = 0; i < 4; i++) {
+    long raw = ads.readChannel(mux_vals[i]);
+    float v = ads.convertToVoltage(raw);
+    Serial.printlnf("  Channel AIN%d (MUX 0x%02X): raw=%ld, volt=%.6f V", i, mux_vals[i], raw, v);
+  }
 
   GAS_started = true;
   Serial.println("ADS1256: Initialized");
@@ -340,17 +336,16 @@ String CitySense::getGASdata() {
     return "na,na,na,na";
 
   // Read 4 channels (gas sensors) using single-ended inputs
-  // MUX values: AINx + AINCOM (GND)
+  // AIN0=SN1_W, AIN1=SN1_R, AIN2=SN2_W, AIN3=SN2_R
   uint8_t mux_vals[] = {SING_0, SING_1, SING_2, SING_3};
   float voltages[4];
 
   for (int i = 0; i < 4; i++) {
-    ads.setMUX(mux_vals[i]);
-    long raw = ads.readSingle();
+    long raw = ads.readChannel(mux_vals[i]);
     voltages[i] = ads.convertToVoltage(raw);
   }
 
-  // SN2_W, SN2_R, SN1_W, SN1_R
+  // Format: gas_op1_w, gas_op1_r, gas_op2_w, gas_op2_r
   String payload = String::format("%.6f,%.6f,%.6f,%.6f", voltages[0],
                                   voltages[1], voltages[2], voltages[3]);
   return payload;
