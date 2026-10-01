@@ -156,6 +156,7 @@ SPIClass* _spi; //Pointer to an SPIClass object
 void waitForLowDRDY(); // Block until DRDY is low
 void waitForHighDRDY(); // Block until DRDY is high
 void updateMUX(uint8_t muxValue);
+void setCS(uint8_t state); // Safe CS control (skips if CS pin is 0/invalid)
 
 void updateConversionParameter(); //Refresh the conversion parameter based on the PGA
 

@@ -268,6 +268,9 @@ Para garantir precisão nas análises em **São Paulo / Brasil**, o firmware con
 6. **Desativação Total do Modem Celular no Boot:**
    - Incluído o comando `Cellular.off()` no bloco `STARTUP()` de [main.cpp](firmware/src/main.cpp) para eliminar a busca por torres e o LED piscando em verde.
 
+7. **Correção do Pino CS e Barramento SPI1 do Conversor ADC de Gases (ADS1256):**
+   - Corrigido conflito de pinagem no módulo B-SoM onde o pino `D4` (que é `SPI1 MISO`) estava configurado incorretamente como Chip Select (`CS`). Como o pino CS do hardware do Flatburn V5 é soldado permanentemente ao GND (Pino 20), `ADS1256_CS_PIN` foi redefinido para `0` e o driver [ADS1256.cpp](firmware/lib/ADS1256-main/src/ADS1256.cpp) foi ajustado para liberar `D4` para receber os dados dos sensores eletroquímicos via barramento `SPI1` (`gas_op1_w`, `gas_op1_r`, `gas_op2_w`, `gas_op2_r`), eliminando leituras saturadas em 0V / -0.000001V.
+
 ---
 
 Todos os materiais estão sob a licença [MIT License](LICENSE).

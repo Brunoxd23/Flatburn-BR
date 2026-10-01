@@ -294,4 +294,16 @@ Para garantir precisão nas análises em **São Paulo / Brasil**, o firmware con
    - Incluído o comando `Cellular.off()` no bloco `STARTUP()` de [main.cpp](src/main.cpp).
    - **Efeito:** Impede que o LED RGB fique piscando em verde procurando torres de celular quando o dispositivo estiver operando exclusivamente em modo de registro offline no cartão SD.
 
+7. **Correção do Pino CS e Barramento SPI1 do Conversor ADC de Gases (ADS1256):**
+   - **Causa Raiz do Erro (Valores `0.000000` / `-0.000001`):** No esquema de hardware do Flatburn V5, o pino Chip Select (`~CS`) do conversor ADC ADS1256 é soldado diretamente ao GND (Pino 20 -> GND_DIGITAL), mantendo o conversor permanentemente selecionado. O código anterior definia `#define ADS1256_CS_PIN D4` e configurava `D4` como saída digital `OUTPUT` acionada em nível alto. No entanto, no módulo Particle B-Series SoM (M.2 pino 66), o pino `D4` é a linha de entrada de dados **`SPI1 MISO`** (Master In Slave Out). Ao forçar o pino MISO como saída alta, o microcontrolador bloqueava a leitura SPI do conversor ADC, gerando leitura de saturação `0xFFFFFF` (valor bruto `-1`, que ao ser convertido para Volts resultava em `-0.000001 V` ou zeros).
+   - **Solução Implementada:** 
+     1. Atualizada a biblioteca [ADS1256.cpp](lib/ADS1256-main/src/ADS1256.cpp) e [ADS1256.h](lib/ADS1256-main/src/ADS1256.h) com o helper seguro `setCS()`, que não altera pinos quando `CS_pin = 0`.
+     2. Ajustado `ADS1256_CS_PIN` para `0` em [cityscanner_sense.cpp](src/cityscanner_sense.cpp) e [CS_core.h](lib/cscore/src/CS_core.h), permitindo que `D4` funcione normalmente como `MISO` no barramento `SPI1` (SCK=D2, MOSI=D3, MISO=D4, DRDY=D16).
+     3. Removida pasta redundante aninhada `lib/ADS1256-main/ADS1256-main/`.
+     4. Mapeamento confirmado dos 4 canais de amostragem dos sensores eletroquímicos de gás:
+        - `AIN0` (`SING_0`): Sensor 1 - Eletrodo de Trabalho (`gas_op1_w` / NO2_W)
+        - `AIN1` (`SING_1`): Sensor 1 - Eletrodo Auxiliar/Referência (`gas_op1_r` / NO2_R)
+        - `AIN2` (`SING_2`): Sensor 2 - Eletrodo de Trabalho (`gas_op2_w` / O3_W)
+        - `AIN3` (`SING_3`): Sensor 2 - Eletrodo Auxiliar/Referência (`gas_op2_r` / O3_R)
+
 

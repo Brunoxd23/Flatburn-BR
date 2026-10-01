@@ -17,26 +17,49 @@
 
 #define convertSigned24BitToLong(value) ((value) & (1l << 23) ? (value) - 0x1000000 : value)
 
+void ADS1256::setCS(uint8_t state)
+{
+	if (_CS_pin != 0 && _CS_pin != 255)
+	{
+		digitalWrite(_CS_pin, state);
+	}
+}
+
 //Constructor
 ADS1256::ADS1256(const byte DRDY_pin, const byte RESET_pin, const byte SYNC_pin, const byte CS_pin,float VREF, SPIClass* spi): _spi(spi)
 {
 	_DRDY_pin = DRDY_pin; 
 	pinMode(_DRDY_pin, INPUT);	
 	 
-	if(RESET_pin !=0)
+	if(RESET_pin != 0 && RESET_pin != 255)
 	{
-	_RESET_pin = RESET_pin;
-	pinMode(_RESET_pin, OUTPUT);
+		_RESET_pin = RESET_pin;
+		pinMode(_RESET_pin, OUTPUT);
+	}
+	else
+	{
+		_RESET_pin = 0;
 	}
 	
-	if(SYNC_pin != 0)
+	if(SYNC_pin != 0 && SYNC_pin != 255)
 	{
-	_SYNC_pin = SYNC_pin;
-	pinMode(_SYNC_pin, OUTPUT);
+		_SYNC_pin = SYNC_pin;
+		pinMode(_SYNC_pin, OUTPUT);
+	}
+	else
+	{
+		_SYNC_pin = 0;
 	}
 	
-	_CS_pin = CS_pin;
-	pinMode(_CS_pin, OUTPUT);		
+	if(CS_pin != 0 && CS_pin != 255)
+	{
+		_CS_pin = CS_pin;
+		pinMode(_CS_pin, OUTPUT);		
+	}
+	else
+	{
+		_CS_pin = 0;
+	}
 	
 	_VREF = VREF;
 	_PGA = 0;
@@ -48,7 +71,7 @@ ADS1256::ADS1256(const byte DRDY_pin, const byte RESET_pin, const byte SYNC_pin,
 void ADS1256::InitializeADC()
 {  
   //Chip select LOW  
-  digitalWrite(_CS_pin, LOW);
+  setCS(LOW);
   
   //We do a manual chip reset on the ADS1256 - Datasheet Page 27/ RESET
   if(_RESET_pin != 0)
@@ -119,7 +142,7 @@ void ADS1256::stopConversion() //Sending SDATAC to stop the continuous conversio
 {	
 	waitForLowDRDY(); //SDATAC should be called after DRDY goes LOW (p35. Figure 33)
 	_spi->transfer(0b00001111); //Send SDATAC to the ADC	
-	digitalWrite(_CS_pin, HIGH); //We finished the command sequence, so we switch it back to HIGH
+	setCS(HIGH); //We finished the command sequence, so we switch it back to HIGH
 	_spi->endTransaction();
 	
 	_isAcquisitionRunning = false; //Reset to false, so the MCU will be able to start a new conversion
@@ -476,11 +499,11 @@ void ADS1256::sendDirectCommand(uint8_t directCommand)
   //Direct commands can be found in the datasheet Page 34, Table 24.
   _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
 
-  digitalWrite(_CS_pin, LOW); //REF: P34: "CS must stay low during the entire command sequence"
+  setCS(LOW); //REF: P34: "CS must stay low during the entire command sequence"
   delayMicroseconds(5);
   _spi->transfer(directCommand); //Send Command
   delayMicroseconds(5);
-  digitalWrite(_CS_pin, HIGH); //REF: P34: "CS must stay low during the entire command sequence"
+  setCS(HIGH); //REF: P34: "CS must stay low during the entire command sequence"
 
   _spi->endTransaction();
 }
@@ -498,7 +521,7 @@ void ADS1256::writeRegister(uint8_t registerAddress, uint8_t registerValueToWrit
   _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
   //SPI_MODE1 = output edge: rising, data capture: falling; clock polarity: 0, clock phase: 1.
 
-  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 
   delayMicroseconds(5); //see t6 in the datasheet
 
@@ -508,7 +531,7 @@ void ADS1256::writeRegister(uint8_t registerAddress, uint8_t registerValueToWrit
 
   _spi->transfer(registerValueToWrite); //pass the value to the register
   
-  digitalWrite(_CS_pin, HIGH);
+  setCS(HIGH);
   _spi->endTransaction();
   delay(100);
   
@@ -521,7 +544,7 @@ long ADS1256::readRegister(uint8_t registerAddress) //Reading a register
   _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
   //SPI_MODE1 = output edge: rising, data capture: falling; clock polarity: 0, clock phase: 1.
 
-  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 
   _spi->transfer(0x10 | registerAddress); //0x10 = 0001000 = RREG - OR together the two numbers (command + address)
 
@@ -531,7 +554,7 @@ long ADS1256::readRegister(uint8_t registerAddress) //Reading a register
 
   uint8_t regValue = _spi->transfer(0xFF); //read out the register value
 
-  digitalWrite(_CS_pin, HIGH);
+  setCS(HIGH);
   _spi->endTransaction();
   delay(100);
   return regValue;
@@ -541,7 +564,7 @@ long ADS1256::readRegister(uint8_t registerAddress) //Reading a register
 long ADS1256::readSingle() //Reading a single value ONCE using the RDATA command 
 {
 	_spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
-	digitalWrite(_CS_pin, LOW); //REF: P34: "CS must stay low during the entire command sequence"  
+	setCS(LOW); //REF: P34: "CS must stay low during the entire command sequence"  
 	waitForLowDRDY();
 	_spi->transfer(0b00000001); //Issue RDATA (0000 0001) command
 	delayMicroseconds(7); //Wait t6 time (~6.51 us) REF: P34, FIG:30.
@@ -554,7 +577,7 @@ long ADS1256::readSingle() //Reading a single value ONCE using the RDATA command
 	_outputValue = ((long)_outputBuffer[0]<<16) | ((long)_outputBuffer[1]<<8) | (_outputBuffer[2]);
 	_outputValue = convertSigned24BitToLong(_outputValue);
 	
-	digitalWrite(_CS_pin, HIGH); //We finished the command sequence, so we set CS to HIGH
+	setCS(HIGH); //We finished the command sequence, so we set CS to HIGH
 	_spi->endTransaction();
   
 	return(_outputValue);
@@ -566,7 +589,7 @@ long ADS1256::readSingleContinuous() //Reads the recently selected input channel
 	{
 	  _isAcquisitionRunning = true;
 	  _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
-	  digitalWrite(_CS_pin, LOW); //REF: P34: "CS must stay low during the entire command sequence"	  
+	  setCS(LOW); //REF: P34: "CS must stay low during the entire command sequence"	  
 	  waitForLowDRDY();
 	  _spi->transfer(0b00000011);  //Issue RDATAC (0000 0011) 
 	  delayMicroseconds(7); //Wait t6 time (~6.51 us) REF: P34, FIG:30.	  
@@ -595,13 +618,13 @@ long ADS1256::cycleSingle()
 	  _isAcquisitionRunning = true;
 	  _cycle = 0;
 	  _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
-	  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+	  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 	  _spi->transfer(0x50 | 1); // 0x50 = WREG //1 = MUX
       _spi->transfer(0x00);
       _spi->transfer(SING_0); //AIN0+AINCOM
-	  digitalWrite(_CS_pin, HIGH);			
+	  setCS(HIGH);			
 	  delay(50);
-	  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+	  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 	}
 	else
 	{}
@@ -682,13 +705,13 @@ long ADS1256::cycleDifferential()
 	  _spi->beginTransaction(SPISettings(1920000, MSBFIRST, SPI_MODE1));
 	  
 	  //Set the AIN0+AIN1 as inputs manually
-	  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+	  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 	  _spi->transfer(0x50 | 1); // 0x50 = WREG //1 = MUX
 	  _spi->transfer(0x00);
 	  _spi->transfer(DIFF_0_1);  //AIN0+AIN1
-	  digitalWrite(_CS_pin, HIGH);	  
+	  setCS(HIGH);	  
 	  delay(50);
-	  digitalWrite(_CS_pin, LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
+	  setCS(LOW); //CS must stay LOW during the entire sequence [Ref: P34, T24]
 	}
 	else
 	{}

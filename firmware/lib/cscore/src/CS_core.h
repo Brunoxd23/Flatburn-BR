@@ -33,10 +33,11 @@
 #define NOISE_INT_PIN A4      // Noise interrupt (NOISE_INT)
 
 // ADC SPI pins (ADS1256 - from schematic page 9)
-#define ADC_nDRDY D16         // ADC data ready
-#define ADC_SPI_CS D4         // ADC chip select
-#define ADC_SPI_RESET D5      // ADC reset (shared with EN_3V3_GPS)
-#define ADC_SPI_SYNC D7       // ADC sync (shared with EN_3V3_QWICC)
+// SPI1 bus: SCK=D2 (M.2 pin 42), MOSI=D3 (M.2 pin 40), MISO=D4 (M.2 pin 66)
+#define ADC_nDRDY D16         // ADC data ready (M.2 pin 37)
+#define ADC_SPI_CS 0          // ADC chip select (hardwired to GND on PCB)
+#define ADC_SPI_RESET 0       // ADC reset (SYNC/PDWN is pulled HIGH to 5V# via R224)
+#define ADC_SPI_SYNC 0        // ADC sync (hardwired / not GPIO controlled)
 
 // RGB LED pins (TLC59711 - from schematic page 6)
 // M.2 pin 43 = D2, M.2 pin 45 = D3 on B-SoM
