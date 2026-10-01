@@ -264,13 +264,13 @@ void MotionService::loop()
     //     }
     // }
 
-    if(inactivity_counter > INACTIVITY_TIME){
-        Serial.println("motion service loop inactivity timer");
-        if(AUTOSLEEP && !OVVERRIDE_AUTOSLEEP){
-        Serial.println("It's time to get some sleep");
-        delay(100);
-        resetInactivityCounter();
-        CitySleep::instance().stop();
+    if (AUTOSLEEP && !OVVERRIDE_AUTOSLEEP) {
+        if (inactivity_counter > INACTIVITY_TIME) {
+            Serial.println("motion service loop inactivity timer");
+            Serial.println("It's time to get some sleep");
+            delay(100);
+            resetInactivityCounter();
+            CitySleep::instance().stop();
         }
     }
 }
