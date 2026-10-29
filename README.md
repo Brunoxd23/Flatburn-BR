@@ -152,6 +152,20 @@ Para descarregar todos os dados gravados no cartão MicroSD e gerar uma planilha
 5. **Salvar o arquivo:**  
    Clique em **"Save CSV File"** para salvar a planilha `.csv` final na sua pasta de Downloads.
 
+### 7. Significado dos LEDs de Status (Guia de Cores)
+O módulo Particle e a placa Flatburn utilizam LEDs indicadores para sinalizar o estado do hardware e das conexões:
+
+| Cor do LED | Padrão | Significado | O que fazer / Situação |
+| :--- | :--- | :--- | :--- |
+| 🟢 **Verde** | Piscando rápido | **Buscando Rede Celular:** O modem celular está ativo e tentando se registrar na torre de telefonia. | Comportamento normal logo após ligar a placa ou gravar novo firmware. |
+| 🔵 **Azul Escuro** | Piscando | **Modo de Escuta (Listening Mode):** Placa aguardando comandos via USB/Serial (ativado ao segurar o botão MODE por 3s ou ao plugar placa virgem). | Apertar o botão **RESET** uma vez para voltar à execução normal. |
+| 🌐 **Ciano (Azul Claro)** | Piscando rápido | **Conectando à Nuvem:** Autenticando com os servidores da Particle após conectar na torre celular. | Aguardar alguns segundos até a conclusão do handshake. |
+| 🌐 **Ciano (Azul Claro)** | Pulsando suave ("respirando") | **Conectado e Online:** Comunicação ativa e estável com a Nuvem Particle. | Dispositivo 100% online e apto a transmitir dados em tempo real. |
+| 🟡 **Amarelo / Âmbar** | Piscando rápido | **Modo DFU:** Placa pronta para receber novo firmware via USB (`particle flash --usb`). | Gravar o firmware pelo terminal ou pressionar RESET para sair. |
+| ⚪ **Branco** | Pulsando suave | **Modo Offline:** Modem celular desligado (`Cellular.off()`), gravando dados apenas localmente no SD Card. | Padrão do Flatburn para economia de energia durante coletas. |
+| 🟣 **Magenta / Roxo** | Piscando rápido | **Safe Mode / Atualização OTA:** Atualizando firmware pela nuvem ou em modo de proteção. | Aguardar o término do download/gravação. |
+| 🔴 **Vermelho** *(Placa Flatburn)* | Piscando lento / Aceso | **Carga / Sistema Ativo:** LED do circuito de alimentação (BQ25798) e amostragem ativa dos sensores. | Normal durante a operação e quando conectado ao cabo USB. |
+
 ---
 
 ## 🎮 Manual de Comandos do Firmware (CLI Serial / Nuvem)
