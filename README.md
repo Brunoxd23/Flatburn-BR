@@ -138,6 +138,20 @@ particle serial monitor --follow
 particle serial list
 ```
 
+### 6. Como Baixar e Unificar o CSV de Dados via Navegador
+Para descarregar todos os dados gravados no cartão MicroSD e gerar uma planilha única `.csv` com georreferenciamento e timestamps corrigidos:
+
+1. **Liberar a porta USB:**  
+   Se o comando `particle serial monitor` estiver rodando no terminal, feche-o pressionando **`Ctrl + C`** *(no Windows, a porta serial fica bloqueada caso outro programa esteja usando)*.
+2. **Abrir a ferramenta web:**  
+   Abra o arquivo [`documentation/content/explore/flatburn_downloader.html`](documentation/content/explore/flatburn_downloader.html) no **Google Chrome** ou **Microsoft Edge** (estes navegadores possuem suporte nativo à *Web Serial API*).
+3. **Conectar ao dispositivo:**  
+   Na página aberta, clique em **Connect** e selecione a porta serial do Flatburn (geralmente identificada como **"B-SoM CDC Mode"** ou **"USB Serial Device"**).
+4. **Baixar e Unificar:**  
+   Clique no botão **"Download All, Parse & Merge"**. O sistema baixa todos os blocos do SD, limpa os dados e unifica tudo em uma única tabela.
+5. **Salvar o arquivo:**  
+   Clique em **"Save CSV File"** para salvar a planilha `.csv` final na sua pasta de Downloads.
+
 ---
 
 ## 🎮 Manual de Comandos do Firmware (CLI Serial / Nuvem)
