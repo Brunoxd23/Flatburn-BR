@@ -305,8 +305,8 @@
 <script>
 const BAUD_RATE = 115200;
 const SKIP_FILES = new Set(['_ACTIV~1.CSV']);
-const EXPECTED_COLUMNS = 22;
-const COLUMNS_TO_DELETE = [0, 1, 9, 10, 11, 12, 13, 14];
+const COLUMNS_TO_DELETE_22 = [0, 1, 9, 10, 11, 12, 13, 14]; // Com SPS30 EXTENDED (22 colunas)
+const COLUMNS_TO_DELETE_20 = [0, 1, 9, 10, 11, 12];         // Sem SPS30 na bancada (20 colunas)
 const FINAL_COLUMN_NAMES = [
   'timestamp', 'latitude', 'longitude', 'PM1_0', 'PM2_5', 'PM4',
   'PM10', 'temperature', 'humidity', 'gas_op1_w', 'gas_op1_r',
@@ -510,11 +510,20 @@ function parseCSV(rawText) {
   const rows = [];
   const lines = rawText.split('\n');
   for (const line of lines) {
-    const parts = line.trim().split(',');
-    if (parts.length === EXPECTED_COLUMNS) {
-      const filtered = parts.filter((_, i) => !COLUMNS_TO_DELETE.includes(i));
-      // Convert epoch timestamp to human-readable
-      filtered[0] = epochToDatetime(filtered[0]);
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split(',');
+    let filtered = null;
+    if (parts.length === 22) {
+      filtered = parts.filter((_, i) => !COLUMNS_TO_DELETE_22.includes(i));
+    } else if (parts.length === 20) {
+      filtered = parts.filter((_, i) => !COLUMNS_TO_DELETE_20.includes(i));
+    }
+    if (filtered && filtered.length === FINAL_COLUMN_NAMES.length) {
+      const formattedTs = epochToDatetime(filtered[0]);
+      if (formattedTs) {
+        filtered[0] = formattedTs;
+      }
       rows.push(filtered);
     }
   }

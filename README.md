@@ -104,41 +104,71 @@ particle login
 
 Todos os comandos abaixo devem ser executados a partir da raiz do repositório (`flartBurn/`):
 
-### 1. Compilar o Firmware
-Para compilar o código fonte da pasta `firmware` direcionado à plataforma `b5som` (ou `bsom`) com o Device OS `6.3.4`:
+### 1. Binários Pré-compilados Prontos para Teste
+Para facilitar testes imediatos em bancada ou em campo, o projeto dispõe de dois binários prontos:
+
+| Arquivo `.bin` | Configuração Celular | Comportamento do LED | Uso Recomendado |
+| :--- | :--- | :--- | :--- |
+| **`firmware_sem_celular.bin`** | `CELLULAR_ON_STARTUP FALSE` | ⚪ **Branco suave** (offline) | **Bancada e desenvolvimento local:** Desativa o modem na inicialização, liberando a Serial instantaneamente e gravando dados no MicroSD. |
+| **`firmware_com_celular.bin`** | `CELLULAR_ON_STARTUP TRUE` | 🟢 **Verde** $\rightarrow$ 🌐 **Ciano** | **Operação em campo com telemetria:** Conecta à rede móvel e envia dados para a Nuvem Particle. |
+
+---
+
+### 2. Automação com Scripts Rápidos (.bat no Windows)
+Você pode executar as ações com 2 cliques ou pelo terminal:
+
+- **Compilação Automática:**
+  - `compilar_sem_celular.bat` $\rightarrow$ Ajusta a configuração para `FALSE` e compila `firmware_sem_celular.bin`.
+  - `compilar_com_celular.bat` $\rightarrow$ Ajusta a configuração para `TRUE` e compila `firmware_com_celular.bin`.
+- **Gravação Direta via USB:**
+  - `gravar_sem_celular.bat` $\rightarrow$ Grava a versão offline via USB.
+  - `gravar_com_celular.bat` $\rightarrow$ Grava a versão online via USB.
+
+---
+
+### 3. Gravar no Dispositivo via USB (Cabo)
+1. Conecte a placa ao computador pelo cabo USB.
+2. Coloque a placa em **modo DFU**:
+   - Mantenha pressionados os botões **RESET** e **MODE**.
+   - Solte o botão **RESET** e continue segurando o botão **MODE** até o LED RGB começar a **piscar rápido em amarelo / âmbar**.
+   - Solte o botão **MODE**.
+3. Execute o comando de gravação da versão desejada:
+   ```bash
+   # Opção A: Versão Offline (Recomendada para testes e sem antena celular)
+   particle flash --usb firmware_sem_celular.bin
+
+   # Opção B: Versão Online (Conexão celular ativa)
+   particle flash --usb firmware_com_celular.bin
+   ```
+
+---
+
+### 4. Compilar Manualmente via Terminal
+Caso altere o código-fonte manualmente e queira compilar via linha de comando:
 ```bash
 particle compile b5som firmware/ --target 6.3.4 --saveTo firmware.bin
 ```
-- Se a compilação tiver sucesso, será gerado o arquivo `firmware.bin`.
 
-### 2. Gravar no Dispositivo via USB (Cabo)
-1. Conecte a placa ao computador pelo cabo USB.
-2. Coloque a placa em **modo DFU** (se não for acionado automaticamente):
-   - Mantenha pressionados os botões **RESET** e **MODE**.
-   - Solte o botão **RESET** e continue segurando o botão **MODE** até o LED RGB começar a **piscar em amarelo / âmbar**.
-3. Execute o comando de gravação:
-   ```bash
-   particle flash --usb firmware.bin
-   ```
+---
 
-### 3. Gravar no Dispositivo via Nuvem (OTA - Sem cabo)
+### 5. Gravar no Dispositivo via Nuvem (OTA - Sem cabo)
 Caso o dispositivo esteja na rua ou conectado via celular:
 ```bash
 particle flash NOME_OU_ID_DO_DISPOSITIVO firmware.bin
 ```
 
-### 4. Visualizar Logs da Porta Serial (Monitor em Tempo Real)
+### 6. Visualizar Logs da Porta Serial (Monitor em Tempo Real)
 Para acompanhar leituras de sensores e mensagens de debug enviadas pelo dispositivo via USB:
 ```bash
 particle serial monitor --follow
 ```
 
-### 5. Listar Dispositivos Conectados na USB
+### 7. Listar Dispositivos Conectados na USB
 ```bash
 particle serial list
 ```
 
-### 6. Como Baixar e Unificar o CSV de Dados via Navegador
+### 8. Como Baixar e Unificar o CSV de Dados via Navegador
 Para descarregar todos os dados gravados no cartão MicroSD e gerar uma planilha única `.csv` com georreferenciamento e timestamps corrigidos:
 
 1. **Liberar a porta USB:**  
@@ -152,19 +182,30 @@ Para descarregar todos os dados gravados no cartão MicroSD e gerar uma planilha
 5. **Salvar o arquivo:**  
    Clique em **"Save CSV File"** para salvar a planilha `.csv` final na sua pasta de Downloads.
 
-### 7. Significado dos LEDs de Status (Guia de Cores)
+### 9. Significado dos LEDs de Status (Guia de Cores)
 O módulo Particle e a placa Flatburn utilizam LEDs indicadores para sinalizar o estado do hardware e das conexões:
 
 | Cor do LED | Padrão | Significado | O que fazer / Situação |
 | :--- | :--- | :--- | :--- |
 | 🟢 **Verde** | Piscando rápido | **Buscando Rede Celular:** O modem celular está ativo e tentando se registrar na torre de telefonia. | Comportamento normal logo após ligar a placa ou gravar novo firmware. |
-| 🔵 **Azul Escuro** | Piscando | **Modo de Escuta (Listening Mode):** Placa aguardando comandos via USB/Serial (ativado ao segurar o botão MODE por 3s ou ao plugar placa virgem). | Apertar o botão **RESET** uma vez para voltar à execução normal. |
+| 🔵 **Azul Escuro** | Piscando | **Modo de Escuta (Listening Mode):** Placa aguardando comandos USB ou sistema desatualizado (firmware do Flatburn pausado). | 1. Dê 1 clique no botão **RESET**.<br>2. Se continuar azul ou for placa nova, coloque em DFU (amarelo) e execute `particle update`. |
 | 🌐 **Ciano (Azul Claro)** | Piscando rápido | **Conectando à Nuvem:** Autenticando com os servidores da Particle após conectar na torre celular. | Aguardar alguns segundos até a conclusão do handshake. |
 | 🌐 **Ciano (Azul Claro)** | Pulsando suave ("respirando") | **Conectado e Online:** Comunicação ativa e estável com a Nuvem Particle. | Dispositivo 100% online e apto a transmitir dados em tempo real. |
 | 🟡 **Amarelo / Âmbar** | Piscando rápido | **Modo DFU:** Placa pronta para receber novo firmware via USB (`particle flash --usb`). | Gravar o firmware pelo terminal ou pressionar RESET para sair. |
 | ⚪ **Branco** | Pulsando suave | **Modo Offline:** Modem celular desligado (`Cellular.off()`), gravando dados apenas localmente no SD Card. | Padrão do Flatburn para economia de energia durante coletas. |
 | 🟣 **Magenta / Roxo** | Piscando rápido | **Safe Mode / Atualização OTA:** Atualizando firmware pela nuvem ou em modo de proteção. | Aguardar o término do download/gravação. |
 | 🔴 **Vermelho** *(Placa Flatburn)* | Piscando lento / Aceso | **Carga / Sistema Ativo:** LED do circuito de alimentação (BQ25798) e amostragem ativa dos sensores. | Normal durante a operação e quando conectado ao cabo USB. |
+
+> [!TIP]
+> **Placa travada piscando em Azul Escuro (Listening Mode) ou não inicializa após gravar?**  
+> Isso é muito comum em placas novas ou virgens de fábrica cujo sistema operacional interno (*Device OS*) ainda está em versões antigas:
+> 1. Feche o monitor serial com `Ctrl + C` para liberar a porta USB.
+> 2. Coloque a placa em **modo DFU** (LED piscando rápido em **amarelo**): segure `RESET + MODE`, solte `RESET`, espere piscar em amarelo e solte `MODE`.
+> 3. No terminal, execute a atualização do sistema:
+>    ```bash
+>    particle update
+>    ```
+> 4. Após a conclusão com sucesso, regrave o firmware desejado (`particle flash --usb firmware_sem_celular.bin` ou use o script `.bat`).
 
 ---
 
